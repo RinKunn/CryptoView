@@ -1,0 +1,68 @@
+﻿@using CryptoView.Web.Models.Connections
+@model System.Collections.Generic.IEnumerable<Connection>;
+@{
+    ViewData["Title"] = "Account";
+}
+
+<div class="d-flex w-100 mb-4">
+    <h2 class="flex-grow-1">Exchange Connectors</h2>
+    <a class="btn btn-success px-4" asp-action="Create">Create</a>
+</div>
+
+@if(TempData["StatusMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @TempData["StatusMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@if(Model != null && Model.Any())
+{
+    <div class="accordion" id="connectionsAccordion"> 
+        @foreach (var connection in Model)
+        {
+            <div class="accordion-item">
+                <h2 class="accordion-header" id=@($"heading{connection.ExchangeName}")>
+                    <button class="accordion-button collapsed px-3 py-2" type="button" data-bs-toggle="collapse" data-bs-target=@($"#collapse{connection.ExchangeName}") aria-expanded="false" aria-controls=@($"collapse{connection.ExchangeName}")>
+                        @connection.ExchangeName
+                    </button>
+                </h2>
+
+                <div id=@($"collapse{connection.ExchangeName}") class="accordion-collapse collapse" aria-labelledby=@($"heading{connection.ExchangeName}") >
+                    <div class="accordion-body d-flex w-100 align-items-start">
+                        <img class="rounded" src="http://via.placeholder.com/100x100">
+                        <div class="flex-grow-1 mx-4">
+                            <div class="my-2">
+                                <p class="text-secondary mb-1">Key:</p>
+                                <p><strong>@connection.ApiKey</strong></p>
+                            </div>
+                            <div class="my-2">
+                                <p class="text-secondary mb-1">Secret:</p>
+                                <p><strong>*******</strong></p>
+                            </div>
+                            <div class="my-2">
+                                @if(connection.IsTradingLocked)
+                                {
+                                    <p class="text-success">Trading is locked</p>
+                                }
+                                else
+                                {
+                                    <p class="text-danger">Trading is not locked! Please, lock the ability</p>
+                                }
+                            </div>
+                        </div>
+                        <div class="align-self-end">
+                            <a class="btn btn-primary px-4" asp-action="Edit" asp-route-id="@connection.Id">Edit</a>
+                            <a class="btn btn-secondary ms-2" asp-action="Delete" asp-route-id="@connection.Id">Delete</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <h4>There is no added connections to crypto exhanges!</h4>
+}

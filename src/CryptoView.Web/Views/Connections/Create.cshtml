@@ -1,0 +1,30 @@
+﻿@model CryptoView.Web.Models.Connections.ConnectionViewModel
+@{
+    ViewData["Title"] = "Create new connector";
+}
+
+<h1>Create new connector</h1>
+<h3>Exchange Connector</h3>
+
+<div asp-validation-summary="All" class="text-danger m-2"></div>
+
+<form id="createConnector" asp-action="Create">
+    <div class="mb-3">
+        <label for="ExchangeId" class=form-label>Exchange Id</label>
+        <select class="form-select" asp-for="ExchangeId" asp-items=@Model.Exchanges>
+            <option selected>Select source...</option>
+        </select>
+    </div>
+    <div class="mb-3">
+        <label for="ApiKey" class=form-label>Api Key</label>
+        <input type="text" class="form-control" id="ApiKey" name="ApiKey" value=@Model?.ApiKey />
+    </div>
+    <div class="mb-3">
+        <label for="ApiSecret" class=form-label>Api Secret</label>
+        <input type="password" class="form-control" id="ApiSecret" name="ApiSecret" value=@Model?.ApiSecret />
+    </div>
+    <div class=mb-3>
+        <a class="btn btn-warning" asp-action="Index">Cancel</a>
+        <button type="submit" class="btn btn-success">Create</button>
+    </div>
+</form>
