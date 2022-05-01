@@ -20,7 +20,7 @@ builder.Services.AddControllersWithViews();
 
 builder.Services.AddInfrastructure();
 
-builder.Services.AddTransient<IConnectionsService, ConnectionsService>();
+builder.Services.AddTransient<IApiService, MockApiService>();
 
 var app = builder.Build();
 

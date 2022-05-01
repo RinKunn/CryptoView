@@ -1,9 +1,8 @@
 using CryptoView.UnitTests.Helper;
 using CryptoView.Web.Controllers;
 using CryptoView.Web.Interfaces;
-using CryptoView.Web.Models.Connections;
+using CryptoView.Web.Models.ApiManagement;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using Moq;
 using System;
 using System.Collections.Generic;
@@ -13,280 +12,407 @@ using Xunit;
 
 namespace CryptoView.UnitTests.Web.Controllers
 {
-    public class ConnectionsControllerTests
+    public class ApiManagementControllerTests
     {
-        private List<Connection> _connections;
-        private List<SelectListItem> _exchanges;
+        private List<ApiInfo> _apiList;
+        private List<ExchangeInfo> _exchangeList;
 
-        public ConnectionsControllerTests()
+        public ApiManagementControllerTests()
         {
-            _connections = CreateExchangeConnections();
-            _exchanges = CreateExchanges();
+            _exchangeList = CreateExchanges();
+            _apiList = CreateExchangeConnections(_exchangeList);
         }
 
         [Fact]
-        public async Task Index_ReturnsViewResult_WithListOfConnections()
+        public async Task Index_WithListOfApi_ReturnsViewResult()
         {
             var userId = "user1";
-            var mockService = new Mock<IConnectionsService>();
-            mockService
-                .Setup(s => s.GetConnectionsForUser(It.IsAny<string>()))
-                .ReturnsAsync(_connections)
-                .Verifiable();
-            var controller = new ConnectionsController(mockService.Object)
-                .WithIdentity(userId, "user1");
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(s => s.GetApiList(userId)).ReturnsAsync(_apiList);
+            mockService.Setup(s => s.ExchangesWithNoAPI(userId)).ReturnsAsync(_exchangeList.Where(e => e.Id == 3));
+            var controller = new ApiManagementController(mockService.Object)
+                .WithIdentity(userId, userId);
 
             var result = await controller.Index();
 
             var viewResult = Assert.IsType<ViewResult>(result);
-            var model = Assert.IsAssignableFrom<IEnumerable<Connection>>(viewResult.Model);
-            Assert.Equal(2, model.Count());
-            mockService.Verify(m => m.GetConnectionsForUser(It.Is<string>(arg => arg == userId)));
+            var model = Assert.IsAssignableFrom<IndexViewModel>(viewResult.Model);
+            Assert.Equal(2, model.APIs.Count());
+            Assert.Single(model.ExchangesWithNoAPI);
         }
 
         [Fact]
-        public async Task Index_ReturnsViewResult_WithEmptyList()
+        public async Task Index_WithEmptyList_ReturnsViewResult()
         {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(s => s.GetConnectionsForUser(It.IsAny<string>()))
-                .ReturnsAsync(null as IEnumerable<Connection>);
-            var controller = new ConnectionsController(mockService.Object)
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(s => s.GetApiList(It.IsAny<string>())).ReturnsAsync(null as IEnumerable<ApiInfo>);
+            mockService.Setup(s => s.ExchangesWithNoAPI(It.IsAny<string>())).ReturnsAsync(_exchangeList);
+            var controller = new ApiManagementController(mockService.Object)
                 .WithAnonymousIdentity();
 
             var result = await controller.Index();
 
             var viewResult = Assert.IsType<ViewResult>(result);
-            Assert.Null(viewResult.Model);
+            var model = Assert.IsAssignableFrom<IndexViewModel>(viewResult.Model);
+            Assert.Null(model.APIs);
+            Assert.Equal(3, model.ExchangesWithNoAPI.Count());
         }
 
-
-        #region Create
+        #region Creation
         [Fact]
-        public async Task Create_InvalidModel_ReturnViewResult()
+        public async Task CreateGet_ExchangeNotExists_ReturnNotFoundResult()
         {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.GetExchanges()).ReturnsAsync(_exchanges);
-            var controller = new ConnectionsController(mockService.Object);
+            int exchangeId = 4;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(s => s.GetExchangeById(It.IsAny<int>())).ReturnsAsync(null as ExchangeInfo);
+            var controller = new ApiManagementController(mockService.Object).WithAnonymousIdentity();
+
+            var result = await controller.Create(exchangeId);
+
+            Assert.IsType<NotFoundResult>(result);
+        }
+
+        [Fact]
+        public async Task CreateGet_ApiAlreadyExists_ReturnRedirectToEditAction()
+        {
+            string userId = "user1";
+            var api = _apiList[0];
+            var exchange = api.ExchangeInfo;
+            int exchangeId = exchange.Id;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(s => s.GetExchangeById(exchangeId)).ReturnsAsync(exchange);
+            mockService.Setup(s => s.GetApiForExchange(exchangeId, userId)).ReturnsAsync(api);
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
+
+            var result = await controller.Create(exchangeId);
+
+            var redirectResult = Assert.IsType<RedirectToActionResult>(result);
+            Assert.Equal("Edit", redirectResult.ActionName);
+            Assert.NotNull(redirectResult.RouteValues?["exchangeId"]);
+            int routeId = Assert.IsAssignableFrom<int>(redirectResult.RouteValues?["exchangeId"]);
+            Assert.Equal(exchangeId, routeId);
+        }
+
+        [Fact]
+        public async Task CreateGet_ApiNotExists_ReturnViewResult()
+        {
+            string userId = "user1";
+            var exchange = _exchangeList[0];
+            int exchangeId = exchange.Id;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(s => s.GetApiForExchange(exchangeId, userId)).ReturnsAsync(null as ApiInfo);
+            mockService.Setup(s => s.GetExchangeById(exchangeId)).ReturnsAsync(exchange);
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
+
+            var result = await controller.Create(exchangeId);
+
+            var viewResult = Assert.IsType<ViewResult>(result);
+            var model = Assert.IsAssignableFrom<ApiInfo>(viewResult.Model);
+            Assert.NotNull(model.ExchangeInfo);
+            Assert.Equal(exchange, model.ExchangeInfo);
+        }
+
+        [Fact]
+        public async Task CreatePost_InvalidModel_ReturnViewResult()
+        {
+            var exchange = _exchangeList[0];
+            var exchangeId = exchange.Id;
+            var entryModel = new ApiInfo { Key = "key", Secret = "pass" };
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetExchangeById(exchangeId)).ReturnsAsync(exchange);
+            var controller = new ApiManagementController(mockService.Object);
             controller.ModelState.AddModelError("some error", "some error nessage");
-            var entryModel = new ConnectionViewModel { ApiKey = "key", ApiSecret = "pass", ExchangeId = 1 };
-
-            var result = await controller.Create(entryModel);
+            
+            var result = await controller.Create(exchangeId, entryModel);
 
             var viewModel = Assert.IsType<ViewResult>(result);
-            var model = Assert.IsType<ConnectionViewModel>(viewModel.Model);
-            Assert.Equal(entryModel.ApiKey, model.ApiKey);
-            Assert.Equal(entryModel.ExchangeId, model.ExchangeId);
-            Assert.NotEmpty(model.Exchanges);
-            mockService.Verify(m => m.CreateConnection(It.IsAny<Connection>()), Times.Never);
+            var model = Assert.IsType<ApiInfo>(viewModel.Model);
+            Assert.Equal("key", model.Key);
+            Assert.Equal("pass", model.Secret);
+            Assert.NotNull(model.ExchangeInfo);
+            Assert.Equal(exchange, model.ExchangeInfo);
+            mockService.Verify(m => m.CreateApi(It.IsAny<ApiInfo>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
-        public async Task Create_CreationError_ReturnViewResult()
+        public async Task CreatePost_CreationThrowsException_ReturnViewResult()
         {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.CreateConnection(It.IsAny<Connection>())).ReturnsAsync(false);
-            mockService.Setup(m => m.GetExchanges()).ReturnsAsync(_exchanges);
-            var controller = new ConnectionsController(mockService.Object).WithAnonymousIdentity();
-            var entryModel = new ConnectionViewModel { ApiKey = "key", ApiSecret = "pass", ExchangeId = 1 };
-
-            var result = await controller.Create(entryModel);
+            var userId = "user1";
+            var exchange = _exchangeList[0];
+            var exchangeId = exchange.Id;
+            var entryModel = new ApiInfo { Key = "key", Secret = "pass" };
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetExchangeById(exchangeId)).ReturnsAsync(exchange);
+            mockService.Setup(m => m.CreateApi(It.IsAny<ApiInfo>(), userId))
+                .ThrowsAsync(new Exception());
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
+            
+            var result = await controller.Create(exchangeId, entryModel);
 
             var viewModel = Assert.IsType<ViewResult>(result);
-            var model = Assert.IsType<ConnectionViewModel>(viewModel.Model);
-            Assert.Equal(entryModel.ApiKey, model.ApiKey);
-            Assert.Equal(entryModel.ExchangeId, model.ExchangeId);
-            Assert.NotEmpty(model.Exchanges);
-            mockService.Verify(m => m.CreateConnection(It.IsAny<Connection>()), Times.Once);
+            var model = Assert.IsType<ApiInfo>(viewModel.Model);
+            Assert.Equal("key", model.Key);
+            Assert.Equal("pass", model.Secret);
+            Assert.NotNull(model.ExchangeInfo);
+            Assert.Equal(exchange, model.ExchangeInfo);
+            mockService.Verify(m => m.CreateApi(It.IsAny<ApiInfo>(), userId), Times.Once);
         }
+
 
         [Fact]
         public async Task Create_Succeed_ReturnRedirectToActionResult()
         {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.CreateConnection(It.IsAny<Connection>())).ReturnsAsync(true);
-            var controller = new ConnectionsController(mockService.Object).WithAnonymousIdentity();
-            var entryModel = new ConnectionViewModel { ApiKey = "key", ApiSecret = "pass", ExchangeId = 1 };
+            var userId = "user1";
+            var exchange = _exchangeList[0];
+            var exchangeId = exchange.Id;
+            var entryModel = new ApiInfo { Key = "key", Secret = "pass" };
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(s => s.GetExchangeById(exchangeId)).ReturnsAsync(exchange);
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
 
-            var result = await controller.Create(entryModel);
+            var result = await controller.Create(exchangeId, entryModel);
 
             var redirectResult = Assert.IsType<RedirectToActionResult>(result);
             Assert.Equal("Index", redirectResult.ActionName);
             Assert.NotNull(controller.StatusMessage);
+            mockService.Verify(m => m.CreateApi(
+                    It.Is<ApiInfo>(
+                        c => c.ExchangeInfo != null
+                        && c.ExchangeInfo.Id == exchangeId
+                        && c.Key == "key"
+                        && c.Secret == "pass"
+                        && string.IsNullOrEmpty(c.Id)),
+                    userId),
+                Times.Once);
         }
         #endregion
 
 
         #region Edit
         [Fact]
-        public async Task EditGet_NotExists_ReturnNotFoundResult()
+        public async Task EditGet_ApiNotExists_ReturnNotFoundResult()
         {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.GetConnectionById(It.IsAny<string>()))
-                .ReturnsAsync(null as Connection);
-            var controller = new ConnectionsController(mockService.Object)
-                .WithAnonymousIdentity();
+            int exchangeId = 1;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetApiForExchange(exchangeId, It.IsAny<string>())).ReturnsAsync(null as ApiInfo);
+            var controller = new ApiManagementController(mockService.Object).WithAnonymousIdentity();
 
-            var result = await controller.Edit("notExistsId");
+            var result = await controller.Edit(exchangeId);
 
-            var objResult = Assert.IsType<NotFoundObjectResult>(result);
-            var id = Assert.IsAssignableFrom<string>(objResult.Value);
-            Assert.Equal("notExistsId", id);
+            Assert.IsType<NotFoundResult>(result);
         }
 
         [Fact]
-        public async Task EditGet_RequestedNonOwnConnection_ReturnForbidResult()
+        public async Task EditGet_ApiExists_ReturnViewResult()
         {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.GetConnectionById(It.IsAny<string>()))
-                .ReturnsAsync(_connections[0]);
-            var controller = new ConnectionsController(mockService.Object)
-                .WithIdentity("user2", "user2");
+            string userId = "user1";
+            var api = _apiList[0];
+            int exchangeId = api.ExchangeInfo.Id;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetApiForExchange(exchangeId, userId)).ReturnsAsync(api);
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
 
-            var result = await controller.Edit("id1");
-
-            Assert.IsType<ForbidResult>(result);
-        }
-
-        [Fact]
-        public async Task EditGet_RequestedOwnConnection_ReturnViewResult()
-        {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.GetConnectionById(It.IsAny<string>()))
-                .ReturnsAsync(_connections[0]);
-            mockService.Setup(m => m.GetExchanges()).ReturnsAsync(_exchanges);
-            var controller = new ConnectionsController(mockService.Object)
-                .WithIdentity("user1", "user1");
-
-            var result = await controller.Edit("id1");
+            var result = await controller.Edit(exchangeId);
 
             var viewResult = Assert.IsType<ViewResult>(result);
-            var model = Assert.IsAssignableFrom<ConnectionViewModel>(viewResult.Model);
+            var model = Assert.IsAssignableFrom<ApiInfo>(viewResult.Model);
             Assert.NotNull(model);
-            Assert.Equal(_connections[0].ApiKey, model.ApiKey);
-            Assert.Equal(_connections[0].ApiSecret, model.ApiSecret);
-            Assert.Equal(_connections[0].ExchangeId, model.ExchangeId);
-            Assert.NotEmpty(model.Exchanges);
-        } 
+            Assert.NotNull(model.ExchangeInfo);
+            Assert.Equal(api, model);   
+        }
 
         [Fact]
         public async Task EditPost_InvalidModel_ReturnViewResult()
         {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.GetExchanges()).ReturnsAsync(_exchanges);
-            var controller = new ConnectionsController(mockService.Object);
+            string userId = "user1";
+            var api = _apiList[0];
+            int exchangeId = api.ExchangeInfo.Id;
+            var mockService = new Mock<IApiService>();
+            var entryModel = new ApiInfo { Key = "key", Secret = "pass" };
+            mockService.Setup(m => m.GetApiForExchange(exchangeId, userId)).ReturnsAsync(api);
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
             controller.ModelState.AddModelError("some error", "some error nessage");
-            var entryModel = new ConnectionViewModel { ApiKey = "key", ApiSecret = "pass", ExchangeId = 1 };
-
-            var result = await controller.Edit("id1", entryModel);
-
-            var viewModel = Assert.IsType<ViewResult>(result);
-            var model = Assert.IsType<ConnectionViewModel>(viewModel.Model);
-            Assert.Equal(entryModel.ApiKey, model.ApiKey);
-            Assert.Equal(entryModel.ExchangeId, model.ExchangeId);
-            Assert.NotEmpty(model.Exchanges);
-            mockService.Verify(m => m.UpdateConnection(It.IsAny<Connection>()), Times.Never);
-        }
-        [Fact]
-        public async Task EditPost_NotExists_ReturnNotFoundObjectResult()
-        {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.GetConnectionById(It.IsAny<string>())).ReturnsAsync(null as Connection);
-            mockService.Setup(m => m.GetExchanges()).ReturnsAsync(_exchanges);
-            var controller = new ConnectionsController(mockService.Object).WithAnonymousIdentity();
-            var entryModel = new ConnectionViewModel { ApiKey = "key", ApiSecret = "pass", ExchangeId = 1 };
-
-            var result = await controller.Edit("notExistsId", entryModel);
-
-            var objResult = Assert.IsType<NotFoundObjectResult>(result);
-            var id = Assert.IsAssignableFrom<string>(objResult.Value);
-            Assert.Equal("notExistsId", id);
-            mockService.Verify(m => m.UpdateConnection(It.IsAny<Connection>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task EditPost_UpdateError_ReturnViewResult()
-        {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.UpdateConnection(It.IsAny<Connection>())).ReturnsAsync(false);
-            mockService.Setup(m => m.GetConnectionById(It.IsAny<string>())).ReturnsAsync(_connections[0]);
-            mockService.Setup(m => m.GetExchanges()).ReturnsAsync(_exchanges);
-            var controller = new ConnectionsController(mockService.Object).WithIdentity("user1", "user1");
-            var entryModel = new ConnectionViewModel { ApiKey = "key", ApiSecret = "pass", ExchangeId = 1 };
-
-            var result = await controller.Edit("id1", entryModel);
+            
+            var result = await controller.Edit(exchangeId, entryModel);
 
             var viewModel = Assert.IsType<ViewResult>(result);
-            var model = Assert.IsType<ConnectionViewModel>(viewModel.Model);
-            Assert.Equal(entryModel.ApiKey, model.ApiKey);
-            Assert.Equal(entryModel.ExchangeId, model.ExchangeId);
-            Assert.NotEmpty(model.Exchanges);
-            mockService.Verify(m => m.UpdateConnection(It.IsAny<Connection>()), Times.Once);
+            var model = Assert.IsType<ApiInfo>(viewModel.Model);
+            Assert.Equal("key", model.Key);
+            Assert.Equal("pass", model.Secret);
+            Assert.NotNull(model.ExchangeInfo);
+            Assert.Equal(exchangeId, model.ExchangeInfo.Id);
+            mockService.Verify(m => m.UpdateApi(It.IsAny<ApiInfo>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
-        public async Task EditPost_IdSubstitution_ReturnForbidenResult()
+        public async Task EditPost_NotExists_ReturnNotFoundResult()
         {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.GetConnectionById(It.IsAny<string>())).ReturnsAsync(_connections[0]);
-            mockService.Setup(m => m.GetExchanges()).ReturnsAsync(_exchanges);
-            var controller = new ConnectionsController(mockService.Object).WithIdentity("user2", "user2");
-            var entryModel = new ConnectionViewModel { ApiKey = "key", ApiSecret = "pass", ExchangeId = 1 };
+            string userId = "user1";
+            int exchangeId = 1;
+            var entryModel = new ApiInfo { Key = "key", Secret = "pass" };
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetApiForExchange(It.IsAny<int>(), It.IsAny<string>())).ReturnsAsync(null as ApiInfo);
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
 
-            var result = await controller.Edit("notMyId", entryModel);
+            var result = await controller.Edit(exchangeId, entryModel);
 
-            Assert.IsType<ForbidResult>(result);
+            var objResult = Assert.IsType<NotFoundResult>(result);
+        }
+
+        [Fact]
+        public async Task EditPost_UpdateThrowsException_ReturnViewResult()
+        {
+            string userId = "user1";
+            var api = _apiList[0];
+            int exchangeId = api.ExchangeInfo.Id;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetApiForExchange(exchangeId, userId)).ReturnsAsync(api);
+            mockService.Setup(m => m.UpdateApi(It.IsAny<ApiInfo>(), userId))
+                .ThrowsAsync(new Exception());
+            var entryModel = new ApiInfo { Key = "key", Secret = "pass" };
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
+            
+            var result = await controller.Edit(exchangeId, entryModel);
+
+            var viewResult = Assert.IsType<ViewResult>(result);
+            var model = Assert.IsType<ApiInfo>(viewResult.Model);
+            Assert.Equal("key", model.Key);
+            Assert.Equal("pass", model.Secret);
+            Assert.NotNull(model.ExchangeInfo);
+            Assert.Equal(api.ExchangeInfo.Id, model.ExchangeInfo.Id);
+            mockService.Verify(m => m.UpdateApi(It.IsAny<ApiInfo>(), userId), Times.Once);
         }
 
         [Fact]
         public async Task EditPost_Succeed_ReturnRedirectToActionResult()
         {
-            var mockService = new Mock<IConnectionsService>();
-            mockService.Setup(m => m.UpdateConnection(It.IsAny<Connection>())).ReturnsAsync(true);
-            mockService.Setup(m => m.GetConnectionById(It.IsAny<string>())).ReturnsAsync(_connections[0]);
-            var controller = new ConnectionsController(mockService.Object).WithIdentity("user1", "user1");
-            var entryModel = new ConnectionViewModel { ApiKey = "key", ApiSecret = "pass", ExchangeId = 1 };
+            string userId = "user1";
+            var api = _apiList[0];
+            int exchangeId = api.ExchangeInfo.Id;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetApiForExchange(exchangeId, userId)).ReturnsAsync(api);
+            var entryModel = new ApiInfo { Key = "key", Secret = "pass" };
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
 
-            var result = await controller.Edit("id1", entryModel);
+            var result = await controller.Edit(exchangeId, entryModel);
 
             var redirectResult = Assert.IsType<RedirectToActionResult>(result);
             Assert.Equal("Index", redirectResult.ActionName);
             Assert.NotNull(controller.StatusMessage);
-            mockService.Verify(m => m.UpdateConnection(It.IsAny<Connection>()), Times.Once);
+            mockService.Verify(m => m.UpdateApi(
+                    It.Is<ApiInfo>(c =>
+                        !string.IsNullOrEmpty(c.Id)
+                        && c.Key == "key"
+                        && c.Secret == "pass"
+                        && c.ExchangeInfo != null
+                        && c.ExchangeInfo.Id == exchangeId),
+                    userId),
+                Times.Once);
         }
         #endregion
 
 
-
-
-
-        private List<Connection> CreateExchangeConnections()
+        #region Delete
+        [Fact]
+        public async Task DeleteGet_ApiNotExists_ReturnNotFoundResult()
         {
-            return new List<Connection>
+            int exchangeId = 1;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetApiForExchange(exchangeId, It.IsAny<string>())).ReturnsAsync(null as ApiInfo);
+            var controller = new ApiManagementController(mockService.Object).WithAnonymousIdentity();
+
+            var result = await controller.Delete(exchangeId);
+
+            Assert.IsType<NotFoundResult>(result);
+        }
+
+        [Fact]
+        public async Task DeleteGet_ApiExists_ReturnViewResult()
+        {
+            string userId = "user1";
+            var api = _apiList[0];
+            int exchangeId = api.ExchangeInfo.Id;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetApiForExchange(exchangeId, userId)).ReturnsAsync(api);
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
+
+            var result = await controller.Delete(exchangeId);
+
+            var viewResult = Assert.IsType<ViewResult>(result);
+            var model = Assert.IsAssignableFrom<ApiInfo>(viewResult.Model);
+            Assert.NotNull(model);
+            Assert.NotNull(model.ExchangeInfo);
+            Assert.Equal(api, model);
+        }
+
+
+        [Fact]
+        public async Task DeletePost_DeletingThrowsException_ReturnViewResult()
+        {
+            string userId = "user1";
+            var api = _apiList[0];
+            int exchangeId = api.ExchangeInfo.Id;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetApiForExchange(exchangeId, userId)).ReturnsAsync(api);
+            mockService.Setup(m => m.DeleteApi(api.Id, userId))
+                .ThrowsAsync(new Exception());
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
+
+            var result = await controller.DeleteConfirm(exchangeId);
+
+            var viewResult = Assert.IsType<ViewResult>(result);
+            var model = Assert.IsType<ApiInfo>(viewResult.Model);
+            Assert.NotNull(model.ExchangeInfo);
+            Assert.Equal(api, model);
+            mockService.Verify(m => m.DeleteApi(api.Id, userId), Times.Once);
+        }
+
+        [Fact]
+        public async Task DeletePost_Succeed_ReturnRedirectToActionResult()
+        {
+            string userId = "user1";
+            var api = _apiList[0];
+            int exchangeId = api.ExchangeInfo.Id;
+            var mockService = new Mock<IApiService>();
+            mockService.Setup(m => m.GetApiForExchange(exchangeId, userId)).ReturnsAsync(api);
+            var controller = new ApiManagementController(mockService.Object).WithIdentity(userId, userId);
+
+            var result = await controller.DeleteConfirm(exchangeId);
+
+            var redirectResult = Assert.IsType<RedirectToActionResult>(result);
+            Assert.Equal("Index", redirectResult.ActionName);
+            Assert.NotNull(controller.StatusMessage);
+            mockService.Verify(m => m.DeleteApi(api.Id, userId), Times.Once);
+        } 
+        #endregion
+
+
+
+        private List<ApiInfo> CreateExchangeConnections(IList<ExchangeInfo> exchanges)
+        {
+            return new List<ApiInfo>
             {
-                new Connection{
+                new ApiInfo{
                     Id = "id1",
-                    ExchangeName = "Binance",
-                    ApiKey = "Key11",
-                    ApiSecret = "Secret11",
-                    Created = DateTime.Now.AddDays(-10),
-                    UserId = "user1",
+                    Key = "Key11",
+                    Secret = "Secret11",
+                    ExchangeInfo = exchanges[0]
                 },
-                new Connection{
+                new ApiInfo{
                     Id = "id2",
-                    ExchangeName = "Kraken",
-                    ApiKey = "Key12",
-                    ApiSecret = "Secret12",
-                    Created = DateTime.Now.AddDays(-9),
-                    UserId = "user1",
+                    Key = "Key12",
+                    Secret = "Secret12",
+                    ExchangeInfo = exchanges[1]
                 },
             };
         }
-        private List<SelectListItem> CreateExchanges()
+        private List<ExchangeInfo> CreateExchanges()
         {
-            return new List<SelectListItem>
+            return new List<ExchangeInfo>
             {
-                new SelectListItem("Binance", "1"),
-                new SelectListItem("Kraken", "2"),
+                new ExchangeInfo { Id = 1, Name = "Binance" },
+                new ExchangeInfo { Id = 2, Name = "Kraken" },
+                new ExchangeInfo { Id = 3, Name = "Coinbase"}
             };
         }
     }

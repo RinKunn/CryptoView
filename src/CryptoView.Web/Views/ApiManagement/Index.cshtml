@@ -1,0 +1,77 @@
+﻿@using System.Linq;
+@model CryptoView.Web.Models.ApiManagement.IndexViewModel;
+@{
+    ViewData["Title"] = "Account";
+    bool canCreate = Model.ExchangesWithNoAPI.Any();
+}
+
+<div class="d-flex w-100 mb-4">
+    <h2 class="flex-grow-1">Exchange Connectors</h2>
+    <div class="btn-group">
+        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" disabled=@(!canCreate)>
+            Create
+        </button>
+        @if(canCreate)
+        {
+            <ul class="dropdown-menu">
+            @foreach (var exchange in Model.ExchangesWithNoAPI)
+            {
+                <li><a class="dropdown-item" asp-action="Create" asp-route-exchangeId="@exchange.Id">@exchange.Name</a></li>
+            }
+            </ul>
+       }
+    </div>
+</div>
+
+@if(TempData["StatusMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @TempData["StatusMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@if(Model.APIs != null && Model.APIs.Any())
+{
+    <div id="apiList">
+        @foreach (var api in Model.APIs)
+        {
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between">
+                    <h5>@api.ExchangeInfo?.Name</h5>
+                    <div class="align-self-end">
+                        <a class="btn btn-secondary px-4" asp-action="Edit" asp-route-exchangeId="@api.ExchangeInfo?.Id">Edit</a>
+                        <a class="btn btn-outline-secondary ms-2" asp-action="Delete" asp-route-exchangeId="@api.ExchangeInfo?.Id">Delete</a>
+                    </div>
+                </div>
+                <div class="card-body d-flex w-100 align-items-start">
+                    <img class="rounded" src="http://via.placeholder.com/100x100">
+                    <div class="flex-grow-1 mx-4">
+                        <div class="my-2">
+                            <p class="text-secondary mb-1">Key:</p>
+                            <p><strong>@api.Key</strong></p>
+                        </div>
+                        <div class="my-2">
+                            <p class="text-secondary mb-1">Secret:</p>
+                            <p><strong>*******</strong></p>
+                        </div>
+                        <div class="my-2">
+                            @if(api.IsTradingLocked)
+                            {
+                                <p class="text-success">Trading is locked</p>
+                            }
+                            else
+                            {
+                                <p class="text-danger">Trading is not locked! Please, lock for the sucurity</p>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <h4>There is no added connections to crypto exhanges!</h4>
+}

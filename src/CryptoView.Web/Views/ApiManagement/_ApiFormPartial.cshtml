@@ -1,0 +1,14 @@
+﻿@model CryptoView.Web.Models.ApiManagement.ApiInfo
+
+<div class="d-flex align-items-center">
+    <img class="rounded me-3" src="http://via.placeholder.com/40x40">
+    <h3>@Model.ExchangeInfo?.Name</h3>
+</div>
+<div class="mb-3">
+    <label for="Key" class=form-label>Api Key</label>
+    <input class="form-control" asp-for="Key"/>
+</div>
+<div class="mb-3">
+    <label for="Secret" class=form-label>Api Secret</label>
+    <input class="form-control" asp-for="Secret"/>
+</div>

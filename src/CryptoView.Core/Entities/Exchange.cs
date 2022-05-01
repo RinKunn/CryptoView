@@ -8,8 +8,9 @@ namespace CryptoView.Core.Entities
 {
     public class Exchange
     {
-        public string Id { get; set; }
+        public int Id { get; set; }
         public string Name { get; set; }
-        public string ApiUrl { get; set; }
+        public string ApiBaseUrl { get; set; }
+        public string ImgUrl { get; set; }
     }
 }

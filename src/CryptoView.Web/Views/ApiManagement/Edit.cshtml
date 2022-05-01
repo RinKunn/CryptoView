@@ -1,0 +1,14 @@
+﻿@model CryptoView.Web.Models.ApiManagement.ApiInfo
+@{
+    ViewData["Title"] = "Editing API";
+}
+<h1>Editing API</h1>
+<div asp-validation-summary="All" class="text-danger m-2"></div>
+<form id="updateApi" asp-action="Edit" asp-route-exchangeId="@Model.ExchangeInfo?.Id">
+    <partial name="_ApiFormPartial.cshtml" />
+    <div class=mb-3>
+        <a class="btn btn-warning" asp-action="Index">Cancel</a>
+        <button type="submit" class="btn btn-success">Save</button>
+    </div>
+</form>
+

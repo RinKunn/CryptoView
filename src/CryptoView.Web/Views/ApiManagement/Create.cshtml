@@ -1,0 +1,14 @@
+﻿@model CryptoView.Web.Models.ApiManagement.ApiInfo
+@{
+    ViewData["Title"] = "Creating API";
+}
+<h1>Creating new API</h1>
+<div asp-validation-summary="All" class="text-danger m-2"></div>
+<form id="createApi" asp-action="Create" asp-route-exchangeId="@Model.ExchangeInfo?.Id">
+    <partial name="_ApiFormPartial.cshtml" />
+    <div class=mb-3>
+        <a class="btn btn-warning" asp-action="Index">Cancel</a>
+        <button type="submit" class="btn btn-success">Create</button>
+    </div>
+</form>
+

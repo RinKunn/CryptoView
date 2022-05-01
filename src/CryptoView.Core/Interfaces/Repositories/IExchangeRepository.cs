@@ -5,10 +5,11 @@ using System.Text;
 using System.Threading.Tasks;
 using CryptoView.Core.Entities;
 
-namespace CryptoView.Core.Interfaces
+namespace CryptoView.Core.Interfaces.Repositories
 {
     public interface IExchangeRepository
     {
-        Task<Exchange> GetAllAsync();
+        Task<IEnumerable<Exchange>> GetAllAsync();
+        Task<Exchange> GetById(int id);
     }
 }

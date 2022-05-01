@@ -12,13 +12,13 @@
             </a>
             <ul class="dropdown-menu" aria-labelledby="dropdownMenu2">
                 <li><a class="nav-link text-dark dropdown-item" asp-area="Identity" asp-page="/Account/Manage/Index" title="Manage">Account</a></li>
-                <li><a class="nav-link text-dark dropdown-item" asp-area="" asp-controller="Connections" asp-action="Index" title="Connectors">Connectors</a></li>
+                <li><a class="nav-link text-dark dropdown-item" asp-area="" asp-controller="ApiManagement" asp-action="Index" title="APIs">APIs</a></li>
             </ul>
         </div>
     </li>
     <li class="nav-item">
         <form  class="form-inline" asp-area="Identity" asp-page="/Account/Logout" asp-route-returnUrl="@Url.Action("Index", "Home", new { area = "" })">
-            <button  type="submit" class="nav-link btn btn-link text-dark">Logout</button>
+            <button type="submit" class="nav-link btn btn-link text-dark">Logout</button>
         </form>
     </li>
 }
